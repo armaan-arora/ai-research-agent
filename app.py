@@ -1,131 +1,121 @@
 import streamlit as st
-from src.graph import build_graph
-from src.pdf_exporter import generate_pdf
-from src.history import load_history, save_to_history, clear_history
-from datetime import datetime
-import os
 
-st.set_page_config(page_title="AI Research Agent", page_icon="🔍", layout="wide")
+st.set_page_config(
+    page_title="AI Research Agent",
+    page_icon="🔍",
+    layout="wide"
+)
 
-# ─── SIDEBAR ───
-with st.sidebar:
-    st.title("📚 Research History")
-    st.markdown("---")
+# ─── HERO ───
+st.markdown("""
+    <div style="text-align: center; padding: 3rem 0;">
+        <h1 style="font-size: 3.5rem;">🔍 AI Research Agent</h1>
+        <p style="font-size: 1.3rem; color: gray;">
+            Autonomous multi-agent research pipeline powered by GPT-4o-mini
+        </p>
+    </div>
+""", unsafe_allow_html=True)
 
-    history = load_history()
+# ─── AGENT PIPELINE ───
+st.markdown("### ⚙️ How it works")
+col1, col2, col3, col4, col5 = st.columns(5)
 
-    if not history:
-        st.info("No research history yet!")
-    else:
-        if st.button("🗑️ Clear History", type="secondary"):
-            clear_history()
-            st.rerun()
+with col1:
+    st.markdown("""
+    <div style="text-align:center; padding:1rem; background:#1e1e2e; border-radius:10px;">
+        <div style="font-size:2rem;">🧠</div>
+        <b>Planner</b>
+        <p style="font-size:0.8rem; color:gray;">Breaks topic into focused sub-queries</p>
+    </div>
+    """, unsafe_allow_html=True)
 
-        for i, entry in enumerate(history):
-            with st.expander(f"🔍 {entry['topic']} — {entry['timestamp']}"):
-                st.markdown(f"**Overall Score:** {entry['overall_score']}/10")
-                if st.button(f"Load Report", key=f"load_{i}"):
-                    st.session_state["loaded_report"] = entry["report"]
-                    st.session_state["loaded_topic"] = entry["topic"]
-                    st.rerun()
+with col2:
+    st.markdown("""
+    <div style="text-align:center; padding:1rem; background:#1e1e2e; border-radius:10px;">
+        <div style="font-size:2rem;">🔎</div>
+        <b>Searcher</b>
+        <p style="font-size:0.8rem; color:gray;">Parallel web search + RAG cache</p>
+    </div>
+    """, unsafe_allow_html=True)
 
-# ─── MAIN UI ───
-st.title("🔍 AI Research Agent")
-st.markdown("Enter any topic and the AI will research it and generate a structured report.")
+with col3:
+    st.markdown("""
+    <div style="text-align:center; padding:1rem; background:#1e1e2e; border-radius:10px;">
+        <div style="font-size:2rem;">🔄</div>
+        <b>Reflector</b>
+        <p style="font-size:0.8rem; color:gray;">Self-checks and re-searches gaps</p>
+    </div>
+    """, unsafe_allow_html=True)
 
-# show loaded report from history if selected
-if "loaded_report" in st.session_state:
-    st.success(f"Loaded report: {st.session_state['loaded_topic']}")
-    st.markdown("---")
-    st.markdown(st.session_state["loaded_report"])
-    if st.button("Clear Loaded Report"):
-        del st.session_state["loaded_report"]
-        del st.session_state["loaded_topic"]
-        st.rerun()
-else:
-    topic = st.text_input("Research Topic", placeholder="e.g. AI in healthcare")
+with col4:
+    st.markdown("""
+    <div style="text-align:center; padding:1rem; background:#1e1e2e; border-radius:10px;">
+        <div style="font-size:2rem;">📝</div>
+        <b>Reporter</b>
+        <p style="font-size:0.8rem; color:gray;">Writes structured report</p>
+    </div>
+    """, unsafe_allow_html=True)
 
-    if st.button("Generate Report", type="primary"):
-        if not topic.strip():
-            st.warning("Please enter a topic first!")
-        else:
-            graph = build_graph()
-            status = st.empty()
-            progress = st.container()
+with col5:
+    st.markdown("""
+    <div style="text-align:center; padding:1rem; background:#1e1e2e; border-radius:10px;">
+        <div style="font-size:2rem;">📊</div>
+        <b>Evaluator</b>
+        <p style="font-size:0.8rem; color:gray;">Scores report quality</p>
+    </div>
+    """, unsafe_allow_html=True)
 
-            report = None
-            evaluation = {}
+st.markdown("---")
 
-            with progress:
-                for event in graph.stream({"topic": topic, "loop_count": 0}):
-                    for node_name, node_output in event.items():
-                        if node_name == "planner":
-                            queries = node_output.get("sub_queries", [])
-                            status.success(f"✅ Planner completed — generated {len(queries)} queries")
-                            with st.expander("See queries"):
-                                for q in queries:
-                                    st.write(f"- {q}")
+# ─── TECH STACK ───
+st.markdown("### 🚀 Powered by")
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("LLM", "GPT-4o-mini")
+c2.metric("Search", "Tavily API")
+c3.metric("Memory", "ChromaDB")
+c4.metric("Framework", "LangGraph")
 
-                        elif node_name == "searcher":
-                            results = node_output.get("search_results", [])
-                            status.success(f"✅ Searcher completed — found {len(results)} results")
+st.markdown("---")
 
-                        elif node_name == "reflector":
-                            notes = node_output.get("reflection_notes", "")
-                            loop = node_output.get("loop_count", 0)
-                            if notes and notes.lower() != "none":
-                                status.warning(f"🔄 Reflector — gaps found, searching again... (loop {loop})")
-                            else:
-                                status.success(f"✅ Reflector — sufficient info found!")
+# ─── FEATURES ───
+st.markdown("### ✨ Features")
+f1, f2, f3 = st.columns(3)
 
-                        elif node_name == "reporter":
-                            report = node_output.get("report", "")
-                            status.success("✅ Reporter completed — report ready!")
+with f1:
+    st.markdown("""
+    **🔄 Self Correction**
+    Reflector agent identifies gaps and automatically re-searches until satisfied
+    
+    **⚡ Parallel Search**
+    asyncio runs all sub-queries simultaneously — 3x faster than sequential
+    """)
 
-                        elif node_name == "evaluator":
-                            evaluation = node_output.get("evaluation", {})
-                            status.success("✅ Evaluator completed — report scored!")
+with f2:
+    st.markdown("""
+    **🧠 RAG Memory**
+    ChromaDB caches results semantically — similar queries skip web search
+    
+    **📊 Quality Scoring**
+    Every report scored across coverage, citations, clarity and depth
+    """)
 
-                            st.markdown("---")
-                            st.subheader("📊 Report Quality Score")
-                            col1, col2, col3, col4, col5 = st.columns(5)
-                            col1.metric("Coverage", f"{evaluation.get('coverage')}/10")
-                            col2.metric("Citations", f"{evaluation.get('citations')}/10")
-                            col3.metric("Clarity", f"{evaluation.get('clarity')}/10")
-                            col4.metric("Depth", f"{evaluation.get('depth')}/10")
-                            col5.metric("Overall", f"{evaluation.get('overall')}/10")
-                            st.info(f"💡 Feedback: {evaluation.get('feedback')}")
+with f3:
+    st.markdown("""
+    **💾 Research History**
+    SQLite powered persistent history with one-click report reload
+    
+    **📄 Export Options**
+    Download reports as Markdown or PDF with one click
+    """)
 
-            if report:
-                st.markdown("---")
-                st.markdown(report)
+st.markdown("---")
 
-                # save to history
-                save_to_history(topic, report, evaluation)
+# ─── CTA ───
+st.markdown("""
+    <div style="text-align: center; padding: 2rem 0;">
+        <h3>Ready to research?</h3>
+        <p style="color: gray;">Click <b>Research</b> in the sidebar to get started</p>
+    </div>
+""", unsafe_allow_html=True)
 
-                # save to file
-                os.makedirs("reports", exist_ok=True)
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                filename = f"reports/{topic.replace(' ', '_')}_{timestamp}.md"
-                with open(filename, "w", encoding="utf-8") as f:
-                    f.write(f"# Research Report: {topic}\n\n")
-                    f.write(report)
 
-                st.info(f"Report saved to: {filename}")
-
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.download_button(
-                        label="⬇️ Download Markdown",
-                        data=report,
-                        file_name=f"{topic.replace(' ', '_')}_report.md",
-                        mime="text/markdown"
-                    )
-                with col2:
-                    pdf_buffer = generate_pdf(topic, report, evaluation)
-                    st.download_button(
-                        label="⬇️ Download PDF",
-                        data=pdf_buffer,
-                        file_name=f"{topic.replace(' ', '_')}_report.pdf",
-                        mime="application/pdf"
-                    )
