@@ -5,3 +5,4 @@ __pycache__/
 reports/
 .langgraph_cache
 chroma_db/
+research_history.db

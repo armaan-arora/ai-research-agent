@@ -1,87 +1,131 @@
 import streamlit as st
 from src.graph import build_graph
+from src.pdf_exporter import generate_pdf
+from src.history import load_history, save_to_history, clear_history
 from datetime import datetime
 import os
 
 st.set_page_config(page_title="AI Research Agent", page_icon="🔍", layout="wide")
 
+# ─── SIDEBAR ───
+with st.sidebar:
+    st.title("📚 Research History")
+    st.markdown("---")
+
+    history = load_history()
+
+    if not history:
+        st.info("No research history yet!")
+    else:
+        if st.button("🗑️ Clear History", type="secondary"):
+            clear_history()
+            st.rerun()
+
+        for i, entry in enumerate(history):
+            with st.expander(f"🔍 {entry['topic']} — {entry['timestamp']}"):
+                st.markdown(f"**Overall Score:** {entry['overall_score']}/10")
+                if st.button(f"Load Report", key=f"load_{i}"):
+                    st.session_state["loaded_report"] = entry["report"]
+                    st.session_state["loaded_topic"] = entry["topic"]
+                    st.rerun()
+
+# ─── MAIN UI ───
 st.title("🔍 AI Research Agent")
 st.markdown("Enter any topic and the AI will research it and generate a structured report.")
 
-topic = st.text_input("Research Topic", placeholder="e.g. AI in healthcare")
+# show loaded report from history if selected
+if "loaded_report" in st.session_state:
+    st.success(f"Loaded report: {st.session_state['loaded_topic']}")
+    st.markdown("---")
+    st.markdown(st.session_state["loaded_report"])
+    if st.button("Clear Loaded Report"):
+        del st.session_state["loaded_report"]
+        del st.session_state["loaded_topic"]
+        st.rerun()
+else:
+    topic = st.text_input("Research Topic", placeholder="e.g. AI in healthcare")
 
-if st.button("Generate Report", type="primary"):
-    if not topic.strip():
-        st.warning("Please enter a topic first!")
-    else:
-        graph = build_graph()
+    if st.button("Generate Report", type="primary"):
+        if not topic.strip():
+            st.warning("Please enter a topic first!")
+        else:
+            graph = build_graph()
+            status = st.empty()
+            progress = st.container()
 
-        # status container — shows live agent updates
-        status = st.empty()
-        progress = st.container()
+            report = None
+            evaluation = {}
 
-        report = None
+            with progress:
+                for event in graph.stream({"topic": topic, "loop_count": 0}):
+                    for node_name, node_output in event.items():
+                        if node_name == "planner":
+                            queries = node_output.get("sub_queries", [])
+                            status.success(f"✅ Planner completed — generated {len(queries)} queries")
+                            with st.expander("See queries"):
+                                for q in queries:
+                                    st.write(f"- {q}")
 
-        with progress:
-            for event in graph.stream({"topic": topic, "loop_count": 0}):
-                for node_name, node_output in event.items():
+                        elif node_name == "searcher":
+                            results = node_output.get("search_results", [])
+                            status.success(f"✅ Searcher completed — found {len(results)} results")
 
-                    if node_name == "planner":
-                        queries = node_output.get("sub_queries", [])
-                        status.success(f"✅ Planner completed — generated {len(queries)} queries")
-                        with st.expander("See queries"):
-                            for q in queries:
-                                st.write(f"- {q}")
+                        elif node_name == "reflector":
+                            notes = node_output.get("reflection_notes", "")
+                            loop = node_output.get("loop_count", 0)
+                            if notes and notes.lower() != "none":
+                                status.warning(f"🔄 Reflector — gaps found, searching again... (loop {loop})")
+                            else:
+                                status.success(f"✅ Reflector — sufficient info found!")
 
-                    elif node_name == "searcher":
-                        results = node_output.get("search_results", [])
-                        status.success(f"✅ Searcher completed — found {len(results)} results")
+                        elif node_name == "reporter":
+                            report = node_output.get("report", "")
+                            status.success("✅ Reporter completed — report ready!")
 
-                    elif node_name == "reflector":
-                        notes = node_output.get("reflection_notes", "")
-                        loop = node_output.get("loop_count", 0)
-                        if notes and notes.lower() != "none":
-                            status.warning(f"🔄 Reflector — gaps found, searching again... (loop {loop})")
-                        else:
-                            status.success(f"✅ Reflector — sufficient info found!")
+                        elif node_name == "evaluator":
+                            evaluation = node_output.get("evaluation", {})
+                            status.success("✅ Evaluator completed — report scored!")
 
-                    elif node_name == "reporter":
-                        report = node_output.get("report", "")
-                        status.success("✅ Reporter completed — report ready!")
+                            st.markdown("---")
+                            st.subheader("📊 Report Quality Score")
+                            col1, col2, col3, col4, col5 = st.columns(5)
+                            col1.metric("Coverage", f"{evaluation.get('coverage')}/10")
+                            col2.metric("Citations", f"{evaluation.get('citations')}/10")
+                            col3.metric("Clarity", f"{evaluation.get('clarity')}/10")
+                            col4.metric("Depth", f"{evaluation.get('depth')}/10")
+                            col5.metric("Overall", f"{evaluation.get('overall')}/10")
+                            st.info(f"💡 Feedback: {evaluation.get('feedback')}")
 
-                    elif node_name == "evaluator":
-                        evaluation = node_output.get("evaluation", {})
-                        status.success("✅ Evaluator completed — report scored!")
+            if report:
+                st.markdown("---")
+                st.markdown(report)
 
-                        st.markdown("---")
-                        st.subheader("📊 Report Quality Score")
+                # save to history
+                save_to_history(topic, report, evaluation)
 
-                        col1, col2, col3, col4, col5 = st.columns(5)
-                        col1.metric("Coverage", f"{evaluation.get('coverage')}/10")
-                        col2.metric("Citations", f"{evaluation.get('citations')}/10")
-                        col3.metric("Clarity", f"{evaluation.get('clarity')}/10")
-                        col4.metric("Depth", f"{evaluation.get('depth')}/10")
-                        col5.metric("Overall", f"{evaluation.get('overall')}/10")
+                # save to file
+                os.makedirs("reports", exist_ok=True)
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"reports/{topic.replace(' ', '_')}_{timestamp}.md"
+                with open(filename, "w", encoding="utf-8") as f:
+                    f.write(f"# Research Report: {topic}\n\n")
+                    f.write(report)
 
-                        st.info(f"💡 Feedback: {evaluation.get('feedback')}")
+                st.info(f"Report saved to: {filename}")
 
-        if report:
-            st.markdown("---")
-            st.markdown(report)
-
-            # save to file
-            os.makedirs("reports", exist_ok=True)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"reports/{topic.replace(' ', '_')}_{timestamp}.md"
-            with open(filename, "w", encoding="utf-8") as f:
-                f.write(f"# Research Report: {topic}\n\n")
-                f.write(report)
-
-            st.info(f"Report saved to: {filename}")
-
-            st.download_button(
-                label="⬇️ Download Report",
-                data=report,
-                file_name=f"{topic.replace(' ', '_')}_report.md",
-                mime="text/markdown"
-            )
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.download_button(
+                        label="⬇️ Download Markdown",
+                        data=report,
+                        file_name=f"{topic.replace(' ', '_')}_report.md",
+                        mime="text/markdown"
+                    )
+                with col2:
+                    pdf_buffer = generate_pdf(topic, report, evaluation)
+                    st.download_button(
+                        label="⬇️ Download PDF",
+                        data=pdf_buffer,
+                        file_name=f"{topic.replace(' ', '_')}_report.pdf",
+                        mime="application/pdf"
+                    )
