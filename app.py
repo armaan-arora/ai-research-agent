@@ -49,6 +49,22 @@ if st.button("Generate Report", type="primary"):
                         report = node_output.get("report", "")
                         status.success("✅ Reporter completed — report ready!")
 
+                    elif node_name == "evaluator":
+                        evaluation = node_output.get("evaluation", {})
+                        status.success("✅ Evaluator completed — report scored!")
+
+                        st.markdown("---")
+                        st.subheader("📊 Report Quality Score")
+
+                        col1, col2, col3, col4, col5 = st.columns(5)
+                        col1.metric("Coverage", f"{evaluation.get('coverage')}/10")
+                        col2.metric("Citations", f"{evaluation.get('citations')}/10")
+                        col3.metric("Clarity", f"{evaluation.get('clarity')}/10")
+                        col4.metric("Depth", f"{evaluation.get('depth')}/10")
+                        col5.metric("Overall", f"{evaluation.get('overall')}/10")
+
+                        st.info(f"💡 Feedback: {evaluation.get('feedback')}")
+
         if report:
             st.markdown("---")
             st.markdown(report)

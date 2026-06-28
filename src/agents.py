@@ -1,6 +1,6 @@
 from langchain_openai import ChatOpenAI
 from src.tools import get_search_tool
-from src.schemas import PlannerOutput, ReflectorOutput
+from src.schemas import PlannerOutput, ReflectorOutput, EvaluatorOutput
 from dotenv import load_dotenv
 import asyncio
 
@@ -14,6 +14,7 @@ search_tool = get_search_tool()
 
 llm_planner = llm.with_structured_output(PlannerOutput)
 llm_reflector = llm.with_structured_output(ReflectorOutput)
+llm_evaluator = llm.with_structured_output(EvaluatorOutput)
 
 
 def planner_node(state):
@@ -126,6 +127,46 @@ Report:"""
     response = llm.invoke(prompt)
     return {"report": response.content}
 
+def evaluator_node(state):
+    topic = state["topic"]
+    report = state["report"]
+
+    prompt = f"""You are a research report evaluator.
+
+Topic: {topic}
+
+Report to evaluate:
+{report}
+
+Evaluate this report honestly on these criteria:
+- Coverage: how well does it cover the topic?
+- Citations: are sources properly cited?
+- Clarity: is it well structured and easy to read?
+- Depth: is it detailed and insightful?
+- Overall: overall quality score
+
+Give scores from 1-10 and one line of feedback."""
+
+    response = llm_evaluator.invoke(prompt)
+
+    print(f"\nEvaluator scores:")
+    print(f"Coverage:  {response.coverage}/10")
+    print(f"Citations: {response.citations}/10")
+    print(f"Clarity:   {response.clarity}/10")
+    print(f"Depth:     {response.depth}/10")
+    print(f"Overall:   {response.overall}/10")
+    print(f"Feedback:  {response.feedback}")
+
+    return {
+        "evaluation": {
+            "coverage": response.coverage,
+            "citations": response.citations,
+            "clarity": response.clarity,
+            "depth": response.depth,
+            "overall": response.overall,
+            "feedback": response.feedback
+        }
+    }
 
 def should_continue(state):
     loop_count = state.get("loop_count", 0)
