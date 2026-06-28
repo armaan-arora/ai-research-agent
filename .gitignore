@@ -4,3 +4,4 @@ __pycache__/
 *.pyc
 reports/
 .langgraph_cache
+chroma_db/

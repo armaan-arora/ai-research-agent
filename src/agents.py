@@ -2,7 +2,10 @@ from langchain_openai import ChatOpenAI
 from src.tools import get_search_tool
 from src.schemas import PlannerOutput, ReflectorOutput
 from dotenv import load_dotenv
-import ast
+import asyncio
+
+
+from src.memory import store_results, retrieve_results, has_results
 
 load_dotenv()
 
@@ -27,16 +30,50 @@ Generate exactly 3 focused search queries to research this topic thoroughly."""
     return {"sub_queries": response.sub_queries}
 
 
+async def search_single_query(query):
+    # check RAG memory first
+    if has_results(query):
+        cached = retrieve_results(query)
+        return cached
+    
+    #not in memory
+    response = await asyncio.to_thread(search_tool.invoke, {"query": query})
+    results = response["results"]
+    formatted = [f"Source: {r['url']}\n{r['content']}" for r in results]
+    # store in memory for next time
+    store_results(query, formatted)
+
+    return formatted
+
+# def searcher_node(state):
+#     sub_queries = state["sub_queries"]
+#     all_results = []
+
+#     for query in sub_queries:
+#         response = search_tool.invoke({"query": query})
+#         results = response["results"]
+#         for r in results:
+#             all_results.append(f"Source: {r['url']}\n{r['content']}")
+
+#     return {"search_results": all_results}
+
 def searcher_node(state):
     sub_queries = state["sub_queries"]
+
+    async def run_all():
+        tasks = [search_single_query(q) for q in sub_queries]
+        results = await asyncio.gather(*tasks)
+        return results
+
+    all_nested = asyncio.run(run_all())
+    
+    # flatten list of lists into single list
     all_results = []
-
-    for query in sub_queries:
-        response = search_tool.invoke({"query": query})
-        results = response["results"]
-        for r in results:
-            all_results.append(f"Source: {r['url']}\n{r['content']}")
-
+    for sublist in all_nested:      # loop through each query's results
+        for item in sublist:        # loop through each result
+            all_results.append(item)
+    
+    print(f"\nSearcher found {len(all_results)} results in parallel")
     return {"search_results": all_results}
 
 
