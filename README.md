@@ -15,7 +15,7 @@ User Input → Planner → Searcher → Reflector → Reporter → Final Report
 
 - LangGraph — multi-agent workflow orchestration
 - OpenAI GPT-4o-mini — LLM for all agents
-- Tavily — real-time web search
+- Tavily — for real-time web search
 - Pydantic — structured output validation
 - Streamlit — web UI
 
